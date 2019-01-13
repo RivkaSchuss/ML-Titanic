@@ -3,7 +3,7 @@ from collections import Counter
 
 
 class DtlNode:
-    def __init__(self, attribute, depth, is_leaf, pred):
+    def __init__(self, attribute, depth, is_leaf=False, pred=None):
         self.attribute = attribute
         self.depth = depth
         self.is_leaf = is_leaf
@@ -31,13 +31,23 @@ class DtlTree:
         return string
 
 
+    def tree_traversal(self, ex):
+        current_node = self.root
+        while not current_node.is_leaf:
+            feature_value = ex[self.attributes.index(current_node.attr)]
+            current_node = current_node.children[feature_value]
+
+        return current_node.pred
+
+
 class DtlClassifier:
     def __init__(self, attributes, examples, tags):
         self.attributes = attributes
         self.examples = examples
         self.tags = tags
-        tagged_examples = [(example, tag) for example, tag in zip(self.examples, self.tags)]
-        self.tree = DtlTree(self.DTL(tagged_examples, attributes, 0, self.get_mode(tags)), attributes)
+        self.att_dom_dict = self.get_attr_domain_dict()
+        examples_merged_tags = [(example, tag) for example, tag in zip(self.examples, self.tags)]
+        self.tree = DtlTree(self.DTL(examples_merged_tags, attributes, 0, self.get_mode(tags)), attributes)
 
     def find_positive_tag(self, tags):
         for tag in tags:
@@ -55,7 +65,7 @@ class DtlClassifier:
 
         return tags_counter.most_common(1)[0][0]
 
-    def calculate_entropy(self, tags):
+    def calc_entropy(self, tags):
         tags_counter = Counter()
 
         if not tags:
@@ -73,8 +83,6 @@ class DtlClassifier:
 
         return entropy
 
-    def get_attr_index(self, attr):
-        return self.attributes.index(attr)
 
     def get_attr_domain_dict(self):
         attr_domain_dict = {}
@@ -85,14 +93,14 @@ class DtlClassifier:
         return attr_domain_dict
 
     def get_gain(self, examples, tags, attribute):
-        initial_entropy = self.calculate_entropy(tags)
+        initial_entropy = self.calc_entropy(tags)
         relative_entropy_per_feature = []
-        feature_index = self.get_attr_index(attribute)
-        for possible_value in self.get_attr_domain_dict[attribute]:
+        attr_index = self.attributes.index(attribute)
+        for possible_value in self.att_dom_dict[attribute]:
             examples_and_tags_vi = [(example, tag) for example, tag in zip(examples, tags)
-                                    if example[feature_index] == possible_value]
+                                    if example[attr_index] == possible_value]
             tags_vi = [tag for example, tag in examples_and_tags_vi]
-            entropy_vi = self.calculate_entropy(tags_vi)
+            entropy_vi = self.calc_entropy(tags_vi)
             if not examples:
                 pass
             relative_entropy = (float(len(examples_and_tags_vi)) / len(examples)) * entropy_vi
@@ -124,12 +132,23 @@ class DtlClassifier:
             return DtlNode(None, depth, True, self.get_mode(tags))
         else:
             best = self.choose_attribute(attributes, examples, tags)
+            print(best)
+            attr_index = self.attributes.index(best)
+            current_node = DtlNode(best, depth)
+            attributes_child = attributes[:]
+            attributes_child.remove(best)
+            for possible_value in self.att_dom_dict[best]:
+                examples_and_tags_vi = [(example, tag) for example, tag in zip(examples, tags)
+                                        if example[attr_index] == possible_value]
+                # create child subtree for every possibe value of the feature
+                child = self.DTL(examples_and_tags_vi, attributes_child, depth + 1, self.get_mode(tags))
+                current_node.children[possible_value] = child
+            return current_node
 
 
-def train_data(features, examples, tags):
+def train_data(attributes, examples, tags):
 
-    dtl_classifier = DtlClassifier(features[:len(features) - 1], examples, tags)
-    print(dtl_classifier.tree.root)
+    dtl_classifier = DtlClassifier(attributes[:len(attributes) - 1], examples, tags)
     #
     # classifiers = [dtl_classifier]
     # for classifier in classifiers:
@@ -182,7 +201,7 @@ if __name__ == '__main__':
     print(attributes, examples, tags)
     #tags_test, tests = read_file(test_file)
     #print(tags_test, tests)
-    train_data(attributes[:len(attributes) - 1], examples, tags)
+    train_data(attributes, examples, tags)
 
 
 
