@@ -39,12 +39,12 @@ class DtlTree:
                 string += ":" + node.children[child].previous + "\n"
             else:
                 string += "\n" + self.tree_string(node.children[child])
-
         return string
 
     # traverses the tree
     def traversal(self, ex):
         current_node = self.root
+        # if the current node is not a leaf
         while not current_node.leaf:
             attr_value = ex[self.attributes.index(current_node.attr)]
             current_node = current_node.children[attr_value]
@@ -59,6 +59,7 @@ class DtlClassifier:
         self.examples = examples
         self.tags = tags
         self.att_dom_dict = self.get_attr_domain_dict()
+        # merging the examples with the tags using zip, creating a list of tuples
         examples_merged_tags = [(example, tag) for example, tag in zip(self.examples, self.tags)]
         self.tree = DtlTree(self.DTL(examples_merged_tags, attributes, 0, self.get_mode(tags)), attributes)
 
@@ -252,15 +253,17 @@ class NaiveClassifier:
         max_tag = list(self.examples_dict.keys())[0]
         probabilities = []
 
+        # iterates over the dictionary of examples and finds the max tag
         for tag in self.examples_dict:
-            prob = self.calc_prob(example, self.examples_dict[tag])
-            probabilities.append(prob)
-            if prob > max_prob:
-                max_prob, max_tag = prob, tag
+            probability = self.calc_prob(example, self.examples_dict[tag])
+            probabilities.append(probability)
+            if probability > max_prob:
+                max_prob, max_tag = probability, tag
 
         if len(probabilities) == 2 and probabilities[0] == probabilities[1]:
             return find_positive_tag(self.examples_dict.keys())
 
+        # returns the greatest tag found
         return max_tag
 
 
@@ -284,16 +287,18 @@ def read__file(file_name):
 
 
 # writes all the output to the output file
-def write_files(test_tags, preds, accuracies, dtl_classifier):
-    dt_preds, knn_preds, naive_preds = preds[0], preds[1], preds[2]
-    dt_acc, knn_acc, naive_acc = accuracies[0], accuracies[1], accuracies[2]
+def write_files(true_tags, predictions, accuracies, dtl_classifier):
+    dt_prediction, knn_prediction, naive_prediction = predictions[0], predictions[1], predictions[2]
+    dt_accuracy, knn_accuracy, naive_accuracy = accuracies[0], accuracies[1], accuracies[2]
     with open("output.txt", "w") as output:
+        # defines the header
         lines = ["Num\tDT\tKNN\tnaiveBase"]
         i = 1
-        for true_tag, dt_pred, knn_pred, naive_pred in zip(test_tags, dt_preds, knn_preds, naive_preds):
-            lines.append("{}\t{}\t{}\t{}".format(i, dt_pred, knn_pred, naive_pred))
+        for true_tag, dt_prediction, knn_prediction, naive_prediction in zip(true_tags, dt_prediction,
+                                                                             knn_prediction, naive_prediction):
+            lines.append("{}\t{}\t{}\t{}".format(i, dt_prediction, knn_prediction, naive_prediction))
             i += 1
-        lines.append("\t{}\t{}\t{}".format(dt_acc, knn_acc, naive_acc))
+        lines.append("\t{}\t{}\t{}".format(dt_accuracy, knn_accuracy, naive_accuracy))
         output.writelines("\n".join(lines))
 
     # writes the decision tree to its own file
@@ -301,11 +306,11 @@ def write_files(test_tags, preds, accuracies, dtl_classifier):
 
 
 # calculates the accuracy for each algorithm
-def get_accuracy(test_tags, preds):
+def get_accuracy(test_tags, predictions):
     good_accuracy = 0
     bad_accuracy = 0
-    for test_tag, pred in zip(test_tags, preds):
-        if test_tag == pred:
+    for test_tag, prediction in zip(test_tags, predictions):
+        if test_tag == prediction:
             good_accuracy += 1
         else:
             bad_accuracy += 1
@@ -314,25 +319,31 @@ def get_accuracy(test_tags, preds):
 
 
 if __name__ == '__main__':
+    # parses the 2 files
     attributes, train_examples, train_tags = read__file("train.txt")
     place_holder, test_examples, test_tags = read__file("test.txt")
 
+    # initializes the classifiers for each algorithm
     dtl_classifier = DtlClassifier(attributes[:len(attributes) - 1], train_examples, train_tags)
     knn_classifier = KnnClassifer(train_examples, train_tags)
     naive_classifier = NaiveClassifier(train_examples, train_tags)
 
+    # defines the classifier array
     classifiers = [dtl_classifier, knn_classifier, naive_classifier]
-    preds_per_classifier = []
+    prediction_per_classifier = []
     accuracies = []
 
+    # defines the predictions
     for classifier in classifiers:
-        preds = []
+        predictions = []
         for example, tag in zip(test_examples, test_tags):
-            pred = classifier.predict(example)
-            preds.append(pred)
-        preds_per_classifier.append(preds)
-        accuracies.append(get_accuracy(test_tags, preds))
+            # performs the prediction
+            prediction = classifier.predict(example)
+            predictions.append(prediction)
+        prediction_per_classifier.append(predictions)
+        # adds the accuracies
+        accuracies.append(get_accuracy(test_tags, predictions))
 
-    write_files(test_tags, preds_per_classifier, accuracies, dtl_classifier)
+    write_files(test_tags, prediction_per_classifier, accuracies, dtl_classifier)
 
 
