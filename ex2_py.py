@@ -3,10 +3,10 @@ from collections import Counter
 
 
 class DtlNode:
-    def __init__(self, attr, depth, is_leaf=False, pred=None):
+    def __init__(self, attr, depth, leaf=False, pred=None):
         self.attr = attr
         self.depth = depth
-        self.is_leaf = is_leaf
+        self.leaf = leaf
         self.pred = pred
         self.children = {}
 
@@ -23,16 +23,16 @@ class DtlTree:
             if node.depth > 0:
                 string += "|"
             string += node.attr + "=" + child
-            if node.children[child].is_leaf:
+            if node.children[child].leaf:
                 string += ":" + node.children[child].pred + "\n"
             else:
                 string += "\n" + self.tree_string(node.children[child])
 
         return string
 
-    def tree_traversal(self, ex):
+    def traversal(self, ex):
         current_node = self.root
-        while not current_node.is_leaf:
+        while not current_node.leaf:
             feature_value = ex[self.attributes.index(current_node.attr)]
             current_node = current_node.children[feature_value]
 
@@ -47,6 +47,14 @@ class DtlClassifier:
         self.att_dom_dict = self.get_attr_domain_dict()
         examples_merged_tags = [(example, tag) for example, tag in zip(self.examples, self.tags)]
         self.tree = DtlTree(self.DTL(examples_merged_tags, attributes, 0, self.get_mode(tags)), attributes)
+
+    def write_tree_to_file(self, output_file_name):
+        with open(output_file_name, "w") as output:
+            tree_string = self.tree.tree_string(self.tree.root)
+            output.write(tree_string[:len(tree_string) - 1])
+            
+    def predict(self, ex):
+        return self.tree.traversal(ex)
 
     def find_positive_tag(self, tags):
         for tag in tags:
@@ -81,7 +89,6 @@ class DtlClassifier:
             entropy -= prob * math.log(prob, 2)
 
         return entropy
-
 
     def get_attr_domain_dict(self):
         attr_domain_dict = {}
@@ -139,30 +146,31 @@ class DtlClassifier:
             for possible_value in self.att_dom_dict[best]:
                 examples_and_tags_vi = [(example, tag) for example, tag in zip(examples, tags)
                                         if example[attr_index] == possible_value]
-                # create child subtree for every possibe value of the feature
                 child = self.DTL(examples_and_tags_vi, attributes_child, depth + 1, self.get_mode(tags))
                 current_node.children[possible_value] = child
             return current_node
 
 
-def train_data(attributes, examples, tags):
+class KnnClassifer:
+    def __init__(self, examples, tags, k=5):
+        self.examples = examples
+        self.tags = tags
+        self.k = k
 
-    dtl_classifier = DtlClassifier(attributes[:len(attributes) - 1], examples, tags)
-    print(dtl_classifier.tree.tree_string(dtl_classifier.tree.root))
-    #
-    # classifiers = [dtl_classifier]
-    # for classifier in classifiers:
-    #     preds = []
-    #     for example, tag in zip(examples, tags):
-    #         pred = classifier.predict(example)
-    #         preds.append(pred)
-    #     #preds_per_classifier.append(preds)
-        #accuracy_per_classifier.append(ut.get_accuracy(test_tags, preds))
-
-    #write_output_files(tags, preds_per_classifier, accuracy_per_classifier, dtl_classifier)
+    def predict(self, ex):
+        pass
 
 
-def read_train_file(file_name):
+class NaiveClassifier:
+    def __init__(self, examples, tags):
+        self.examples = examples
+        self.tags = tags
+
+    def predict(self, ex):
+        pass
+
+
+def read__file(file_name):
     attributes = []
     examples = []
     tags = []
@@ -179,10 +187,9 @@ def read_train_file(file_name):
     return attributes, examples, tags
 
 
-def write_output_files(test_tags, preds_per_classifier, accuracy_per_classifier, dt_cls):
-
-    dt_preds, knn_preds, nb_preds = preds_per_classifier[0], preds_per_classifier[1], preds_per_classifier[2]
-    dt_acc, knn_acc, nb_acc = accuracy_per_classifier[0], accuracy_per_classifier[1], accuracy_per_classifier[2]
+def write_files(test_tags, preds, accuracies, dtl_classifier):
+    dt_preds, knn_preds, nb_preds = preds[0], preds[1], preds[2]
+    dt_acc, knn_acc, nb_acc = accuracies[0], accuracies[1], accuracies[2]
     with open("output.txt", "w") as output:
         lines = []
         lines.append("Num\tDT\tKNN\tnaiveBayes")
@@ -193,15 +200,44 @@ def write_output_files(test_tags, preds_per_classifier, accuracy_per_classifier,
         lines.append("\t{}\t{}\t{}".format(dt_acc, knn_acc, nb_acc))
         output.writelines("\n".join(lines))
 
-    dt_cls.write_tree_to_file("output_tree.txt")
+    dtl_classifier.write_tree_to_file("output_tree.txt")
+
+
+def get_accuracy(test_tags, preds):
+    good = bad = 0.0
+    for test_tag, pred in zip(test_tags, preds):
+        if test_tag == pred:
+            good += 1
+        else:
+            bad += 1
+        accuracy = float(good)/(good + bad)
+    return math.ceil(accuracy * 100) / 100
 
 
 if __name__ == '__main__':
-    attributes, examples, tags = read_train_file("train.txt")
-    print(attributes, examples, tags)
+    attributes, train_examples, train_tags = read__file("train.txt")
+    blank, test_examples, test_tags = read__file("test.txt")
+    print(attributes, train_examples, train_tags)
     #tags_test, tests = read_file(test_file)
     #print(tags_test, tests)
-    train_data(attributes, examples, tags)
+    dtl_classifier = DtlClassifier(attributes[:len(attributes) - 1], train_examples, train_tags)
+    knn_classifier = KnnClassifer(train_examples, train_tags)
+    naive_classifier = NaiveClassifier(train_examples, train_tags)
+    tree_as_string = dtl_classifier.tree.tree_string(dtl_classifier.tree.root)
+    print(tree_as_string)
 
+    classifiers = [dtl_classifier, knn_classifier, naive_classifier]
+    preds_per_classifier = []
+    accuracies = []
+
+    for classifier in classifiers:
+        preds = []
+        for example, tag in zip(test_examples, test_tags):
+            pred = classifier.predict(example)
+            preds.append(pred)
+        preds_per_classifier.append(preds)
+        accuracies.append(get_accuracy(test_tags, preds))
+
+    write_files(test_tags, preds_per_classifier, accuracies, dtl_classifier)
 
 
