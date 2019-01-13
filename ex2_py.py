@@ -2,6 +2,12 @@ import math
 from collections import Counter
 
 
+def find_positive_tag(tags):
+    for tag in tags:
+        if tag in ["yes", "true"]:
+            return tag
+    return tag[0]
+
 class DtlNode:
     def __init__(self, attr, depth, leaf=False, pred=None):
         self.attr = attr
@@ -56,11 +62,11 @@ class DtlClassifier:
     def predict(self, ex):
         return self.tree.traversal(ex)
 
-    def find_positive_tag(self, tags):
-        for tag in tags:
-            if tag in ["yes", "true"]:
-                return tag
-        return tag[0]
+    # def find_positive_tag(self, tags):
+    #     for tag in tags:
+    #         if tag in ["yes", "true"]:
+    #             return tag
+    #     return tag[0]
 
     def get_mode(self, tags):
         tags_counter = Counter()
@@ -68,7 +74,7 @@ class DtlClassifier:
             tags_counter[tag] += 1
 
         if len(tags_counter) == 2 and list(tags_counter.values())[0] == list(tags_counter.values())[1]:
-            return self.find_positive_tag(tags_counter.keys())
+            return find_positive_tag(tags_counter.keys())
 
         return tags_counter.most_common(1)[0][0]
 
@@ -138,7 +144,6 @@ class DtlClassifier:
             return DtlNode(None, depth, True, self.get_mode(tags))
         else:
             best = self.choose_attribute(attributes, examples, tags)
-            print(best)
             attr_index = self.attributes.index(best)
             current_node = DtlNode(best, depth)
             attributes_child = attributes[:]
@@ -157,8 +162,34 @@ class KnnClassifer:
         self.tags = tags
         self.k = k
 
+    def calc_distance(self, ex1, ex2):
+
+        distance = 0
+        for attr1, attr2 in zip(ex1, ex2):
+            if attr1 != attr2:
+                distance += 1
+        return distance
+
+    def get_common_tag(self, closest_k):
+        tags_counter = Counter()
+        for tag in closest_k:
+            tags_counter[tag] += 1
+
+        return tags_counter.most_common(1)[0][0]
+
     def predict(self, ex):
-        pass
+        data = [(example, tag) for example, tag in zip(self.examples, self.tags)]
+        distances = []
+        for pair in data:
+            distance = self.calc_distance(pair[0], ex)
+            distances.append((pair, distance))
+
+        closest_k = sorted(distances, key=lambda x: x[1])[:self.k]
+
+        closest_k = [item[0][1] for item in closest_k]
+        return self.get_common_tag(closest_k)
+
+
 
 
 class NaiveClassifier:
@@ -188,16 +219,16 @@ def read__file(file_name):
 
 
 def write_files(test_tags, preds, accuracies, dtl_classifier):
-    dt_preds, knn_preds, nb_preds = preds[0], preds[1], preds[2]
-    dt_acc, knn_acc, nb_acc = accuracies[0], accuracies[1], accuracies[2]
+    dt_preds, knn_preds, naive_preds = preds[0], preds[1], preds[2]
+    dt_acc, knn_acc, naive_acc = accuracies[0], accuracies[1], accuracies[2]
     with open("output.txt", "w") as output:
         lines = []
         lines.append("Num\tDT\tKNN\tnaiveBayes")
         i = 1
-        for true_tag, dt_pred, knn_pred, nb_pred in zip(test_tags, dt_preds, knn_preds, nb_preds):
-            lines.append("{}\t{}\t{}\t{}".format(i, dt_pred, knn_pred, nb_pred))
+        for true_tag, dt_pred, knn_pred, naive_pred in zip(test_tags, dt_preds, knn_preds, naive_preds):
+            lines.append("{}\t{}\t{}\t{}".format(i, dt_pred, knn_pred, naive_pred))
             i += 1
-        lines.append("\t{}\t{}\t{}".format(dt_acc, knn_acc, nb_acc))
+        lines.append("\t{}\t{}\t{}".format(dt_acc, knn_acc, naive_acc))
         output.writelines("\n".join(lines))
 
     dtl_classifier.write_tree_to_file("output_tree.txt")
@@ -216,15 +247,12 @@ def get_accuracy(test_tags, preds):
 
 if __name__ == '__main__':
     attributes, train_examples, train_tags = read__file("train.txt")
-    blank, test_examples, test_tags = read__file("test.txt")
+    place_holder, test_examples, test_tags = read__file("test.txt")
     print(attributes, train_examples, train_tags)
-    #tags_test, tests = read_file(test_file)
-    #print(tags_test, tests)
+
     dtl_classifier = DtlClassifier(attributes[:len(attributes) - 1], train_examples, train_tags)
     knn_classifier = KnnClassifer(train_examples, train_tags)
     naive_classifier = NaiveClassifier(train_examples, train_tags)
-    tree_as_string = dtl_classifier.tree.tree_string(dtl_classifier.tree.root)
-    print(tree_as_string)
 
     classifiers = [dtl_classifier, knn_classifier, naive_classifier]
     preds_per_classifier = []
