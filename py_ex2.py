@@ -1,7 +1,9 @@
 import math
 from collections import Counter
+from functools import reduce
 
 
+# determines if the tag is positive or not
 def find_positive_tag(tags):
     for tag in tags:
         if tag in ["yes", "true"]:
@@ -9,20 +11,23 @@ def find_positive_tag(tags):
     return tag[0]
 
 
+# defines a node in the decision tree
 class DtlNode:
-    def __init__(self, attr, depth, leaf=False, pred=None):
+    def __init__(self, attr, depth, leaf=False, previous=None):
         self.attr = attr
         self.depth = depth
         self.leaf = leaf
-        self.pred = pred
+        self.previous = previous
         self.children = {}
 
 
+# defines a class for the decision tree
 class DtlTree:
     def __init__(self, root, attributes):
         self.root = root
         self.attributes = attributes
 
+    # exports the tree as a string, in order to be written to a file
     def tree_string(self, node):
         string = ""
         for child in sorted(node.children):
@@ -31,21 +36,23 @@ class DtlTree:
                 string += "|"
             string += node.attr + "=" + child
             if node.children[child].leaf:
-                string += ":" + node.children[child].pred + "\n"
+                string += ":" + node.children[child].previous + "\n"
             else:
                 string += "\n" + self.tree_string(node.children[child])
 
         return string
 
+    # traverses the tree
     def traversal(self, ex):
         current_node = self.root
         while not current_node.leaf:
-            feature_value = ex[self.attributes.index(current_node.attr)]
-            current_node = current_node.children[feature_value]
+            attr_value = ex[self.attributes.index(current_node.attr)]
+            current_node = current_node.children[attr_value]
 
-        return current_node.pred
+        return current_node.previous
 
 
+# the class defining the decision tree classifier
 class DtlClassifier:
     def __init__(self, attributes, examples, tags):
         self.attributes = attributes
@@ -55,24 +62,28 @@ class DtlClassifier:
         examples_merged_tags = [(example, tag) for example, tag in zip(self.examples, self.tags)]
         self.tree = DtlTree(self.DTL(examples_merged_tags, attributes, 0, self.get_mode(tags)), attributes)
 
+    # writes the decision tree to a file
     def write_to_file(self, output_file_name):
         with open(output_file_name, "w") as output:
             tree_string = self.tree.tree_string(self.tree.root)
             output.write(tree_string[:len(tree_string) - 1])
-            
+
+    # returns the prediction, by traversing the decision tree using an example
     def predict(self, ex):
         return self.tree.traversal(ex)
 
+    # gets the mode of the tags, meaning if yes or no is the majority
     def get_mode(self, tags):
-        tags_counter = Counter()
+        tags_count = Counter()
         for tag in tags:
-            tags_counter[tag] += 1
+            tags_count[tag] += 1
 
-        if len(tags_counter) == 2 and list(tags_counter.values())[0] == list(tags_counter.values())[1]:
-            return find_positive_tag(tags_counter.keys())
+        if len(tags_count) == 2 and list(tags_count.values())[0] == list(tags_count.values())[1]:
+            return find_positive_tag(tags_count.keys())
 
-        return tags_counter.most_common(1)[0][0]
+        return tags_count.most_common(1)[0][0]
 
+    # calculates the entropy accuracy using the tags
     def calc_entropy(self, tags):
         tags_count = Counter()
         entropy = 0
@@ -82,6 +93,7 @@ class DtlClassifier:
 
         for tag in tags:
             tags_count[tag] += 1
+
         class_prob = [tags_count[tag] / float(len(tags)) for tag in tags_count]
         if 0.0 in class_prob:
             return 0
@@ -91,6 +103,7 @@ class DtlClassifier:
 
         return entropy
 
+    # returns the attribute dictionary with the keys being examples
     def get_attr_domain_dict(self):
         attr_domain_dict = {}
         for attr_index in range(len(self.examples[0])):
@@ -99,22 +112,24 @@ class DtlClassifier:
 
         return attr_domain_dict
 
+    # returns the gain through the attributes
     def get_gain(self, examples, tags, attribute):
         initial_entropy = self.calc_entropy(tags)
         relative_entropy_attr = []
         attr_index = self.attributes.index(attribute)
         for possible_value in self.att_dom_dict[attribute]:
-            examples_and_tags_vi = [(example, tag) for example, tag in zip(examples, tags)
-                                    if example[attr_index] == possible_value]
-            tags_vi = [tag for example, tag in examples_and_tags_vi]
+            data = [(example, tag) for example, tag in zip(examples, tags) if example[attr_index] ==
+                                    possible_value]
+            tags_vi = [tag for example, tag in data]
             entropy_vi = self.calc_entropy(tags_vi)
             if not examples:
                 pass
-            relative_entropy = (float(len(examples_and_tags_vi)) / len(examples)) * entropy_vi
+            relative_entropy = (float(len(data)) / len(examples)) * entropy_vi
             relative_entropy_attr.append(relative_entropy)
 
         return initial_entropy - sum(relative_entropy_attr)
 
+    # chooses the best attribute in order to progress with the next attribute
     def choose_attribute(self, attributes, examples, tags):
         gain_dict = {attribute: self.get_gain(examples, tags, attribute) for attribute in attributes}
         max_gain = 0
@@ -125,6 +140,7 @@ class DtlClassifier:
                 max_attr = attr
         return max_attr
 
+    # a recursive function to build the decision tree, returns a node
     def DTL(self, data, attributes, depth, default=None):
         if not len(data):
             return DtlNode(None, depth, True, default)
@@ -151,12 +167,14 @@ class DtlClassifier:
             return current_node
 
 
+# a class for the knn classifier
 class KnnClassifer:
     def __init__(self, examples, tags, k=5):
         self.examples = examples
         self.tags = tags
         self.k = k
 
+    # calculates the hamming distance between 2 examples
     def calc_distance(self, ex1, ex2):
         distance = 0
         for attr1, attr2 in zip(ex1, ex2):
@@ -164,6 +182,7 @@ class KnnClassifer:
                 distance += 1
         return distance
 
+    # gets the common tag within a certain number of closest k's
     def get_common_tag(self, closest_k):
         tags_counter = Counter()
         for tag in closest_k:
@@ -171,6 +190,7 @@ class KnnClassifer:
 
         return tags_counter.most_common(1)[0][0]
 
+    # predicts the test using the example given
     def predict(self, ex):
         data = [(example, tag) for example, tag in zip(self.examples, self.tags)]
         distances = []
@@ -184,6 +204,7 @@ class KnnClassifer:
         return self.get_common_tag(closest_k)
 
 
+# a class for the naive bayes classifier
 class NaiveClassifier:
     def __init__(self, examples, tags):
         self.examples = examples
@@ -191,6 +212,7 @@ class NaiveClassifier:
         self.examples_dict = self.get_examples_dict()
         self.attr_dom_dict = self.get_attr_dom_dict()
 
+    # returns a dictionary with the examples per tag
     def get_examples_dict(self):
         examples_dict = {}
         for ex, tag in zip(self.examples, self.tags):
@@ -201,6 +223,7 @@ class NaiveClassifier:
 
         return examples_dict
 
+    # returns the attributes according to the domain size
     def get_attr_dom_dict(self):
         attr_domain_size_dict = {}
         for attr_index in range(len(self.examples[0])):
@@ -208,17 +231,47 @@ class NaiveClassifier:
             attr_domain_size_dict[attr_index] = len(domain)
         return attr_domain_size_dict
 
+    # calculates the probability
+    def calc_prob(self, ex, tags):
+        conditioned_probs = []
+        tags_size = len(tags)
+        for attr_index in range(len(ex)):
+            count = 1
+            domain_size = self.attr_dom_dict[attr_index]
+            for train_example in tags:
+                if train_example[attr_index] == example[attr_index]:
+                    count += 1
+            conditioned_probs.append(float(count) / (tags_size + domain_size))
+        class_prob = float(len(tags)) / len(self.examples)
+
+        return reduce(lambda x, y: x * y, conditioned_probs) * class_prob
+
+    # predicts through the tests, returns the tag with the highest probability
     def predict(self, ex):
-        pass
+        max_prob = 0
+        max_tag = list(self.examples_dict.keys())[0]
+        probabilities = []
+
+        for tag in self.examples_dict:
+            prob = self.calc_prob(example, self.examples_dict[tag])
+            probabilities.append(prob)
+            if prob > max_prob:
+                max_prob, max_tag = prob, tag
+
+        if len(probabilities) == 2 and probabilities[0] == probabilities[1]:
+            return find_positive_tag(self.examples_dict.keys())
+
+        return max_tag
 
 
-
+# reads a file when given a file name
 def read__file(file_name):
     attributes = []
     examples = []
     tags = []
     with open(file_name, "r") as file:
         content = file.readlines()
+        # strips according to tabs and lines
         attributes += content[0].strip("\n").strip().split("\t")
 
         for line in content[1:]:
@@ -230,11 +283,12 @@ def read__file(file_name):
     return attributes, examples, tags
 
 
+# writes all the output to the output file
 def write_files(test_tags, preds, accuracies, dtl_classifier):
     dt_preds, knn_preds, naive_preds = preds[0], preds[1], preds[2]
     dt_acc, knn_acc, naive_acc = accuracies[0], accuracies[1], accuracies[2]
     with open("output.txt", "w") as output:
-        lines = ["Num\tDT\tKNN\tnaiveBayes"]
+        lines = ["Num\tDT\tKNN\tnaiveBase"]
         i = 1
         for true_tag, dt_pred, knn_pred, naive_pred in zip(test_tags, dt_preds, knn_preds, naive_preds):
             lines.append("{}\t{}\t{}\t{}".format(i, dt_pred, knn_pred, naive_pred))
@@ -242,17 +296,20 @@ def write_files(test_tags, preds, accuracies, dtl_classifier):
         lines.append("\t{}\t{}\t{}".format(dt_acc, knn_acc, naive_acc))
         output.writelines("\n".join(lines))
 
+    # writes the decision tree to its own file
     dtl_classifier.write_to_file("output_tree.txt")
 
 
+# calculates the accuracy for each algorithm
 def get_accuracy(test_tags, preds):
-    good = bad = 0.0
+    good_accuracy = 0
+    bad_accuracy = 0
     for test_tag, pred in zip(test_tags, preds):
         if test_tag == pred:
-            good += 1
+            good_accuracy += 1
         else:
-            bad += 1
-        accuracy = float(good)/(good + bad)
+            bad_accuracy += 1
+        accuracy = float(good_accuracy)/(good_accuracy + bad_accuracy)
     return math.ceil(accuracy * 100) / 100
 
 
