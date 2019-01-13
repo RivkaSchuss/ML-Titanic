@@ -3,8 +3,8 @@ from collections import Counter
 
 
 class DtlNode:
-    def __init__(self, attribute, depth, is_leaf=False, pred=None):
-        self.attribute = attribute
+    def __init__(self, attr, depth, is_leaf=False, pred=None):
+        self.attr = attr
         self.depth = depth
         self.is_leaf = is_leaf
         self.pred = pred
@@ -22,14 +22,13 @@ class DtlTree:
             string += node.depth * "\t"
             if node.depth > 0:
                 string += "|"
-            string += node.feature + "=" + child
+            string += node.attr + "=" + child
             if node.children[child].is_leaf:
                 string += ":" + node.children[child].pred + "\n"
             else:
                 string += "\n" + self.tree_string(node.children[child])
 
         return string
-
 
     def tree_traversal(self, ex):
         current_node = self.root
@@ -149,6 +148,7 @@ class DtlClassifier:
 def train_data(attributes, examples, tags):
 
     dtl_classifier = DtlClassifier(attributes[:len(attributes) - 1], examples, tags)
+    print(dtl_classifier.tree.tree_string(dtl_classifier.tree.root))
     #
     # classifiers = [dtl_classifier]
     # for classifier in classifiers:
